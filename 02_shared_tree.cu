@@ -12,7 +12,6 @@ __global__ void reduceShared(const float* in, float* out, int n) {
     __syncthreads();   // wait until ALL threads have loaded
 
     // Step 2: tree reduction within shared memory
-    // TODO — this is the part for you to write (hint below)
     for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
         if (tid < stride)
             sdata[tid] += sdata[tid + stride];

@@ -6,6 +6,7 @@ __global__ void float4Optimized(const float* in, float* out, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int gridSize = blockDim.x * gridDim.x;
 
+    // Opt 1: grid-stride accumulate into a register, but load 4 floats at a time
     const float4* in4 = reinterpret_cast<const float4*>(in);
     int n4 = n / 4;                                  // number of float4 elements
 
