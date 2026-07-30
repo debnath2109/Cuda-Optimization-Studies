@@ -26,7 +26,7 @@ int main() {
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    int n = 1000000;              // ~1 million elements
+    int n = 32000000;              // ~32 million elements
     size_t bytes = n * sizeof(float);
 
     // 1. Allocate host (CPU) memory and fill it
@@ -63,9 +63,9 @@ int main() {
     // 5. Copy result back from device to host
     cudaMemcpy(&h_out, d_out, sizeof(float), cudaMemcpyDeviceToHost);
 
-    // 6. Verify (every element should be 3.0)
+    // 6. Verify (every element should be 1.0)
     bool ok = true;
-    if (h_out != 1000000.0f) { ok = false; }
+    if (h_out != 32000000.0f) { ok = false; }
     printf("Result: %f\n", h_out);
     printf("%s\n", ok ? "PASS: all elements correct" : "FAIL");
 

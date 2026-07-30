@@ -27,6 +27,7 @@ Every thread does one `atomicAdd` to a single global address. An atomic is an in
 read-modify-write, so the hardware serializes all ~32M of them on that one location — a
 queue millions deep. The "parallelism" is illusory.
 
+![Stage 1 Nsight profile: DRAM 0.8%, compute stalled on atomic contention](images/stage1_naive.png)
 The profiler shows the damage starkly: **DRAM 0.8%, compute 1.4%** — the GPU does almost
 nothing but wait in the atomic queue. This is contention in its purest form, and it gets
 *relatively worse* as the array grows, which is why the eventual speedup is so large.
@@ -37,6 +38,8 @@ Each block reduces its own elements privately in `__shared__` memory (on-chip, ~
 using a tree — 256 → 128 → 64 → … → 1 in log₂(256) = 8 steps — then performs **one** atomic
 per block. Contention drops from ~32M atomics to a few thousand. A `__syncthreads()` after
 each tree step ensures all writes from one step are visible before the next step reads.
+
+![Stage 2 Nsight profile: L1 90%, DRAM only 30% — bottleneck is shared-memory/sync, not bandwidth](images/stage2_shared_tree.png)
 
 **The key diagnostic moment:** intuition says "memory-bound, so DRAM is the limit." The
 profiler disagrees — **L1 at 90%, DRAM at only 30%.** The kernel reads the data once
@@ -56,7 +59,7 @@ blocks) where each thread sums *many* elements from DRAM into a register before 
 for (int idx = i; idx < n; idx += gridSize)
     mySum += in[idx];
 ```
-
+![Stage 3 Nsight profile: DRAM 97% — bandwidth ceiling reached](images/stage3_grid_stride.png)
 Consecutive threads read consecutive addresses (**coalesced** — the warp's 32 loads merge
 into wide transactions), so this streams real DRAM bandwidth. It also shrinks the tree
 dramatically, cutting shared-memory churn and barriers.
@@ -85,7 +88,7 @@ const float4* in4 = reinterpret_cast<const float4*>(in);
 float4 v = in4[idx];
 mySum += v.x + v.y + v.z + v.w;
 ```
-
+![Stage 4 Nsight profile: DRAM 97%, identical to stage 3 — float4 gave no gain](images/stage4_float4_vec.png)
 **This produced no measurable improvement** — DRAM 97.31% vs 97.22%, identical duration.
 And that is the point. Grid-stride coalesced loading had *already* saturated DRAM bandwidth,
 so wider per-thread loads have no headroom: you cannot push more through a bus that is
