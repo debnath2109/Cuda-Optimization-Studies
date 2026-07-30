@@ -54,7 +54,7 @@ int main() {
 
     // 4. Launch the kernel: choose threads-per-block and number-of-blocks
     int threadsPerBlock = 256;
-    int blocks = (n + threadsPerBlock - 1) / threadsPerBlock;  // ceil(n/256)
+    int blocks = 256;
     reduceOptimized<<<blocks, threadsPerBlock>>>(d_A, d_out, n);
     cudaDeviceSynchronize();
 

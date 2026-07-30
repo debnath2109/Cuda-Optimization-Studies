@@ -9,8 +9,8 @@ using Nsight Compute to identify each bottleneck before fixing it.
 |-------|--------|----------|--------|------|---------|
 | 1 | Naive global atomics | 2050 µs | — | — | 1× |
 | 2 | Shared-memory tree | 56.8 µs | 37% | 88% | 36× |
-| 3 | Grid-stride + warp shuffle | 36.8 µs | 56% | 51% | 56× |
-| 4 | Vectorized float4 loads | 24.3 µs | 86% | 16% | 84× |
+| 3 | Grid-stride + warp shuffle | 24.54 µs | 85% | 16% | 84× |
+| 4 | Vectorized float4 loads | 24.32 µs | 86% | 16% | 84× |
 
 ## The optimization journey
 
@@ -25,12 +25,12 @@ atomic per block. Nsight revealed the new bottleneck: **L1 at 88%, DRAM only 37%
 ![Stage 2 Nsight profile: L1 at 88%, DRAM at 37%](images/stage2_shared_tree.png)
 — the kernel was limited by shared-memory traffic and `__syncthreads` overhead, not bandwidth.
 
-**3. Grid-stride + warp shuffle (36.8 µs, 56×).** Each thread sums multiple elements
+**3. Grid-stride + warp shuffle (24.54 µs, 84×).** Each thread sums multiple elements
 (coalesced grid-stride loads), and the final 32 elements reduce via `__shfl_down_sync`,
 eliminating shared memory and barriers for the last warp. 
 
 ![Stage 3 Nsight profile: L1 at 51%, DRAM at 56%](images/stage3_grid_stride.png)
-DRAM rose 37% → 56% as the bottleneck shifted toward memory.
+DRAM rose 37% → 85% as the bottleneck shifted toward memory.
 
 **4. Vectorized float4 loads (24.3 µs, 84×).** Each thread loads 128 bits (four floats)
 per instruction. **DRAM throughput reached 86%**
