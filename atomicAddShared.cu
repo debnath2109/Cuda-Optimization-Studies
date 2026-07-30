@@ -1,0 +1,77 @@
+#include <cstdio>
+
+__global__ void reduceShared(const float* in, float* out, int n) {
+    // One shared-memory slot per thread in this block
+    __shared__ float sdata[256];
+
+    int tid = threadIdx.x;                              // index within the block (0..255)
+    int i   = blockIdx.x * blockDim.x + threadIdx.x;    // global index
+
+    // Step 1: each thread loads one element from global into shared memory
+    sdata[tid] = (i < n) ? in[i] : 0.0f;
+    __syncthreads();   // wait until ALL threads have loaded
+
+    // Step 2: tree reduction within shared memory
+    // TODO — this is the part for you to write (hint below)
+    for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+        if (tid < stride)
+            sdata[tid] += sdata[tid + stride];
+        __syncthreads();   // all adds this step must finish before the next
+    }
+    // Step 3: thread 0 of each block writes the block's total to global
+    if (tid == 0)
+        atomicAdd(out, sdata[0]);
+}
+
+int main() {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    int n = 1000000;              // ~1 million elements
+    size_t bytes = n * sizeof(float);
+
+    // 1. Allocate host (CPU) memory and fill it
+    float *h_A = (float*)malloc(bytes);
+    float h_out = 0.0f;
+    for (int i = 0; i < n; i++) { h_A[i] = 1.0f;}
+
+    // 2. Allocate device (GPU) memory
+    float *d_A;
+    float *d_out;
+    cudaMalloc(&d_A, bytes);
+    cudaMalloc(&d_out, sizeof(float));
+    cudaMemset(d_out, 0, sizeof(float));
+
+    // 3. Copy inputs from host to device
+    cudaMemcpy(d_A, h_A, bytes, cudaMemcpyHostToDevice);
+
+    // 4. Launch the kernel: choose threads-per-block and number-of-blocks
+    int threadsPerBlock = 256;
+    int blocks = (n + threadsPerBlock - 1) / threadsPerBlock;  // ceil(n/256)
+    reduceShared<<<blocks, threadsPerBlock>>>(d_A, d_out, n);
+    cudaDeviceSynchronize();
+
+    
+    cudaMemset(d_out, 0, sizeof(float));
+    cudaEventRecord(start);
+    reduceShared<<<blocks, threadsPerBlock>>>(d_A, d_out, n);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    printf("Time: %f ms\n", milliseconds);
+    
+    // 5. Copy result back from device to host
+    cudaMemcpy(&h_out, d_out, sizeof(float), cudaMemcpyDeviceToHost);
+
+    // 6. Verify (every element should be 3.0)
+    bool ok = true;
+    if (h_out != 1000000.0f) { ok = false; }
+    printf("Result: %f\n", h_out);
+    printf("%s\n", ok ? "PASS: all elements correct" : "FAIL");
+
+    // 7. Free memory
+    cudaFree(d_A); cudaFree(d_out);
+    free(h_A);
+    return 0;
+}

@@ -1,0 +1,13 @@
+# Compiled binaries
+*.exe
+*.exp
+*.lib
+*.obj
+*.pdb
+
+# Nsight reports (optional — keep if you want them in the repo)
+*.ncu-rep
+
+# OS files
+Thumbs.db
+.DS_Store
