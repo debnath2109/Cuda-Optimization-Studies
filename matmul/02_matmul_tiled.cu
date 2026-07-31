@@ -1,15 +1,27 @@
 #include <iostream>
-__global__ void matmulNaive(const float* A, const float* B, float* C, int N) {
-    // 2D thread indexing — each thread owns one output element
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void matmulTiled(const float* A, const float* B, float* C, int N) {
+    
+    constexpr int TILE = 16; // Assuming a tile size of 16 for this example
+    __shared__ float As[TILE][TILE];    // <-- you have none of this
+    __shared__ float Bs[TILE][TILE];
 
-    if (row < N && col < N) {
-        float sum = 0.0f;
-        for (int k = 0; k < N; k++)
-            sum += A[row * N + k] * B[k * N + col];   // row-major indexing
-        C[row * N + col] = sum;
+    int tx = threadIdx.x, ty = threadIdx.y;
+    int row = blockIdx.y * TILE + threadIdx.y;
+    int col = blockIdx.x * TILE + threadIdx.x;
+    
+    float sum = 0.0f;
+    for (int t = 0; t < N / TILE; t++) {
+        
+        As[ty][tx] = A[row * N + (t * TILE + tx)];   // load tile into shared mem
+        Bs[ty][tx] = B[(t * TILE + ty) * N + col];
+        __syncthreads();                              // <-- you have no barriers
+
+        for (int k = 0; k < TILE; k++)
+            sum += As[ty][k] * Bs[k][tx];             // read from SHARED, not global
+        __syncthreads();
     }
+    C[row * N + col] = sum;
+    
 }
 
 int main() {
@@ -39,11 +51,11 @@ int main() {
     // 4. Launch the kernel: choose threads-per-block and number-of-blocks
     dim3 threadsPerBlock(16, 16);                              // 256 threads/block
     dim3 blocks((N + 15) / 16, (N + 15) / 16);                // grid covers N×N
-    matmulNaive<<<blocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
+    matmulTiled<<<blocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
     cudaDeviceSynchronize();
     
     cudaEventRecord(start);
-    matmulNaive<<<blocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
+    matmulTiled<<<blocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float milliseconds = 0;
